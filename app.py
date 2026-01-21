@@ -2,69 +2,64 @@ import streamlit as st
 import requests
 import time
 
-# --- 1. PAGE CONFIGURATION ---
-st.set_page_config(page_title="Fake News Detector", page_icon="🕵️", layout="wide")
+# --- CONFIG ---
+st.set_page_config(page_title="News Verifier", page_icon="🕵️")
 
-# --- 2. SECURE API ACCESS ---
+# --- SECURE TOKEN ---
+# 1. DELETE your old token on Hugging Face.
+# 2. CREATE a new one. Select ONLY "Inference" -> "Make calls to Inference Providers".
+# 3. PASTE it into Streamlit Secrets as HF_TOKEN.
 try:
     hf_token = st.secrets["HF_TOKEN"]
-except Exception:
-    st.error("Credential Error: Please add 'HF_TOKEN' to your Streamlit Cloud Secrets.")
+except:
+    st.error("Please add HF_TOKEN to your Streamlit Secrets.")
     st.stop()
 
-# --- 3. STABLE MODEL SETUP ---
-# Using a "Tiny" model ensures it is almost always active and fast
-MODEL_ID = "mrm8488/bert-tiny-finetuned-fake-news-detection"
-API_URL = f"https://api-inference.huggingface.co/models/{MODEL_ID}"
+# Using a high-stability model
+API_URL = "https://api-inference.huggingface.co/models/mrm8488/bert-tiny-finetuned-fake-news-detection"
 headers = {"Authorization": f"Bearer {hf_token}"}
 
-def query_model(text):
-    payload = {
-        "inputs": text,
-        "options": {"wait_for_model": True}
-    }
-    # Simple, fast request
-    response = requests.post(API_URL, headers=headers, json=payload, timeout=20)
-    return response.json()
-
-# --- 4. USER INTERFACE ---
-st.title("🛡️ AI Fake News Detector")
-st.write("Verifying news authenticity using high-speed Transformer models.")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("📝 News Content")
-    news_title = st.text_input("Headline")
-    news_content = st.text_area("Article Body", height=250)
-
-with col2:
-    st.subheader("🔍 Verdict")
-    if st.button("Run Analysis", use_container_width=True):
-        if news_title and news_content:
-            with st.spinner("AI is analyzing..."):
-                full_text = f"{news_title} {news_content}"[:1000]
-                output = query_model(full_text)
-                
-                try:
-                    # Tiny-BERT model labels: 'fake' and 'real'
-                    if isinstance(output, list) and len(output) > 0:
-                        res = output[0][0]
-                        label = res['label'].lower()
-                        score = res['score']
-
-                        if "fake" in label:
-                            st.error(f"### Result: 🚨 FAKE NEWS")
-                            st.progress(score, text=f"Suspicion Level: {int(score*100)}%")
-                        else:
-                            st.success(f"### Result: ✅ REAL NEWS")
-                            st.progress(score, text=f"AI Confidence: {int(score*100)}%")
-                    else:
-                        st.error("The API service is currently busy. Please try again in 10s.")
-                except Exception:
-                    st.error("Analysis Failed. Please check your internet or API token.")
+def predict_news(text):
+    # 'wait_for_model' forces the server to stay connected while the model loads
+    payload = {"inputs": text, "options": {"wait_for_model": True}}
+    
+    # We try 3 times internally so the user doesn't see errors
+    for i in range(3):
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+        
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 503:
+            time.sleep(10) # Wait 10s if the model is waking up
+            continue
         else:
-            st.warning("Please provide both headline and body.")
+            return {"error": response.status_code, "msg": response.text}
+    return {"error": "Timeout", "msg": "Model took too long to wake up."}
 
-st.divider()
-st.caption("Securely ")
+# --- UI ---
+st.title("🛡️ AI News Integrity Check")
+
+title = st.text_input("News Headline")
+body = st.text_area("Article Content")
+
+if st.button("Analyze Now"):
+    if title and body:
+        with st.spinner("AI is analyzing (this can take 30s for the first run)..."):
+            # Combining title and body is CORRECT for BERT models
+            full_text = f"{title} {body}"[:1000] 
+            
+            data = predict_news(full_text)
+            
+            if isinstance(data, list):
+                res = data[0][0]
+                label = res['label'].upper()
+                score = res['score']
+                
+                if "FAKE" in label or "LABEL_0" in label:
+                    st.error(f"🚨 FAKE NEWS DETECTED ({int(score*100)}% confidence)")
+                else:
+                    st.success(f"✅ REAL NEWS DETECTED ({int(score*100)}% confidence)")
+            else:
+                st.error(f"Technical Issue: {data.get('error')} - {data.get('msg')}")
+    else:
+        st.warning("Please fill in both fields.")
