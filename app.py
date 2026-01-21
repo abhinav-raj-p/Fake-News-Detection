@@ -19,7 +19,7 @@ except Exception:
 
 # --- 3. API SETUP ---
 # Using the 2026 Router URL for better reliability
-MODEL_ID = "Pulk17/Fake-News-Detection"
+MODEL_ID = "dhruvpal/fake-news-bert"
 API_URL = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
 headers = {"Authorization": f"Bearer {hf_token}"}
 
