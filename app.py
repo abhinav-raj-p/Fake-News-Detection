@@ -1,9 +1,8 @@
 import streamlit as st
-import requests
-import time
+from huggingface_hub import InferenceClient
 
 # --- 1. PAGE CONFIG ---
-st.set_page_config(page_title="AI Fake News Detector", page_icon="🕵️")
+st.set_page_config(page_title="AI News Verifier", page_icon="🛡️")
 
 # --- 2. SECURE TOKEN ---
 try:
@@ -12,56 +11,45 @@ except:
     st.error("Please add HF_TOKEN to your Streamlit Secrets.")
     st.stop()
 
-# --- 3. THE 2026 ROUTER SETUP ---
-# THE FIX: Using a DistilBERT model trained specifically on fake news data
-MODEL_ID = "vignesh-m/distilbert-base-uncased-finetuned-fake-news"
-API_URL = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
-headers = {"Authorization": f"Bearer {hf_token}"}
+# --- 3. STABLE 2026 MODEL ---
+# Using this model because it is a 'Recommended' model for text-classification in 2026
+MODEL_ID = "facebook/bart-large-mnli" 
+client = InferenceClient(model=MODEL_ID, token=hf_token)
 
-def predict_news(text):
-    payload = {"inputs": text, "options": {"wait_for_model": True}}
-    
-    for i in range(3):
-        try:
-            response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 503:
-                time.sleep(10)
-                continue
-            else:
-                return {"error": response.status_code, "msg": response.text}
-        except Exception as e:
-            return {"error": "ConnectionError", "msg": str(e)}
-    return {"error": "Timeout", "msg": "Server Busy"}
+def analyze_text(text):
+    try:
+        # Zero-shot classification: We tell it what labels to look for
+        # This is more accurate than pre-set labels that might change
+        labels = ["real news", "fake news"]
+        result = client.zero_shot_classification(text, candidate_labels=labels)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
 
 # --- 4. USER INTERFACE ---
-st.title("🛡️ AI Fake News Detector")
+st.title("🛡️ AI News Integrity Check")
 
 title = st.text_input("News Headline")
 body = st.text_area("Article Content", height=200)
 
-if st.button("Run Deep Analysis", use_container_width=True):
+if st.button("Run Analysis", use_container_width=True):
     if title and body:
-        with st.spinner("AI is analyzing text context..."):
+        with st.spinner("AI is analyzing via Hugging Face Hub..."):
             full_text = f"{title} {body}"[:1000] 
-            data = predict_news(full_text)
+            data = analyze_text(full_text)
             
-            if isinstance(data, list):
-                # DistilBERT Output: Usually [[{'label': 'FAKE', 'score': ...}]] 
-                # OR [[{'label': 'LABEL_0', 'score': ...}]]
-                res = data[0][0]
-                label = res['label'].upper()
-                score = res['score']
+            if "error" not in data:
+                # The result comes back as a list of dicts with labels and scores
+                # e.g., [{'label': 'real news', 'score': 0.95}, {'label': 'fake news', 'score': 0.05}]
+                best_match = data[0]
+                label = best_match['label']
+                score = best_match['score']
                 
-                # Check for FAKE labels (Model specific)
-                if "FAKE" in label or label == "LABEL_0":
+                if label == "fake news":
                     st.error(f"### 🚨 FAKE NEWS DETECTED ({int(score*100)}% confidence)")
-                    st.write("This article shows linguistic patterns typical of misinformation.")
                 else:
                     st.success(f"### ✅ REAL NEWS DETECTED ({int(score*100)}% confidence)")
-                    st.write("This content is consistent with standard reporting styles.")
             else:
-                st.error(f"Technical Issue: {data.get('error')} - {data.get('msg')}")
+                st.error(f"Technical Issue: {data['error']}")
     else:
         st.warning("Please fill in both fields.")
