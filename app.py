@@ -2,83 +2,69 @@ import streamlit as st
 import requests
 import time
 
-# --- 1. PAGE CONFIG ---
-st.set_page_config(page_title="AI Fake News Detector", page_icon="🛡️", layout="wide")
+# --- 1. PAGE CONFIGURATION ---
+st.set_page_config(page_title="Fake News Detector", page_icon="🕵️", layout="wide")
 
-# --- 2. SECURE API SETUP ---
+# --- 2. SECURE API ACCESS ---
 try:
     hf_token = st.secrets["HF_TOKEN"]
 except Exception:
     st.error("Credential Error: Please add 'HF_TOKEN' to your Streamlit Cloud Secrets.")
     st.stop()
 
-# Model details from your search
-MODEL_ID = "dhruvpal/fake-news-bert"
+# --- 3. STABLE MODEL SETUP ---
+# Using a "Tiny" model ensures it is almost always active and fast
+MODEL_ID = "mrm8488/bert-tiny-finetuned-fake-news-detection"
 API_URL = f"https://api-inference.huggingface.co/models/{MODEL_ID}"
 headers = {"Authorization": f"Bearer {hf_token}"}
 
-# --- 3. PERSISTENT QUERY FUNCTION ---
 def query_model(text):
     payload = {
         "inputs": text,
-        "options": {"wait_for_model": True} # Critical for free-tier reliability
+        "options": {"wait_for_model": True}
     }
-    
-    # Internal loop to handle "Model Waking Up" without crashing
-    for attempt in range(3):
-        try:
-            response = requests.post(API_URL, headers=headers, json=payload, timeout=40)
-            output = response.json()
-            
-            # If model is loading, it provides an estimated wait time
-            if isinstance(output, dict) and "estimated_time" in output:
-                time.sleep(5)
-                continue
-            return output
-        except Exception as e:
-            if attempt == 2: return {"error": str(e)}
-            time.sleep(2)
-    return output
+    # Simple, fast request
+    response = requests.post(API_URL, headers=headers, json=payload, timeout=20)
+    return response.json()
 
 # --- 4. USER INTERFACE ---
-st.title("🛡️ Student AI Fake News Detector")
-st.markdown("Verifying news authenticity using **DistilBERT Transformers**.")
+st.title("🛡️ AI Fake News Detector")
+st.write("Verifying news authenticity using high-speed Transformer models.")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📝 Input News")
-    news_title = st.text_input("Headline", placeholder="Enter news headline...")
-    news_content = st.text_area("Article Body", height=250, placeholder="Paste article content...")
+    st.subheader("📝 News Content")
+    news_title = st.text_input("Headline")
+    news_content = st.text_area("Article Body", height=250)
 
 with col2:
-    st.subheader("🔍 Analysis Verdict")
-    if st.button("Run Deep Analysis", use_container_width=True):
+    st.subheader("🔍 Verdict")
+    if st.button("Run Analysis", use_container_width=True):
         if news_title and news_content:
-            with st.spinner("AI is analyzing (this handles 'cold starts' automatically)..."):
-                # Combine title and content
-                full_text = f"{news_title} {news_content}"[:1200]
+            with st.spinner("AI is analyzing..."):
+                full_text = f"{news_title} {news_content}"[:1000]
                 output = query_model(full_text)
-
+                
                 try:
-                    # Logic for dhruvpal/fake-news-bert: LABEL_1 = Fake, LABEL_0 = Real
+                    # Tiny-BERT model labels: 'fake' and 'real'
                     if isinstance(output, list) and len(output) > 0:
-                        prediction = output[0][0]
-                        label = prediction['label']
-                        score = prediction['score']
+                        res = output[0][0]
+                        label = res['label'].lower()
+                        score = res['score']
 
-                        if label == "LABEL_1":
-                            st.error(f"### Result: 🚨 PROBABLY FAKE")
+                        if "fake" in label:
+                            st.error(f"### Result: 🚨 FAKE NEWS")
                             st.progress(score, text=f"Suspicion Level: {int(score*100)}%")
                         else:
-                            st.success(f"### Result: ✅ PROBABLY REAL")
+                            st.success(f"### Result: ✅ REAL NEWS")
                             st.progress(score, text=f"AI Confidence: {int(score*100)}%")
                     else:
-                        st.error("The AI service is currently overloaded. Please try again in a moment.")
+                        st.error("The API service is currently busy. Please try again in 10s.")
                 except Exception:
-                    st.error("Could not parse AI response. Check your API Token.")
+                    st.error("Analysis Failed. Please check your internet or API token.")
         else:
-            st.warning("Please provide both headline and content.")
+            st.warning("Please provide both headline and body.")
 
 st.divider()
-st.caption("Securely Deployed for Silver Oak University | Powered by Hugging Face Inference API")
+st.caption("Securely Deployed via Streamlit Community Cloud")
