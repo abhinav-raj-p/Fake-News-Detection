@@ -67,4 +67,4 @@ with col2:
             st.warning("Please provide both headline and body.")
 
 st.divider()
-st.caption("Securely Deployed via Streamlit Community Cloud")
+st.caption("Securely ")
