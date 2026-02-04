@@ -40,7 +40,6 @@ if st.button("Run Analysis", use_container_width=True):
             
             if "error" not in data:
                 # The result comes back as a list of dicts with labels and scores
-                # e.g., [{'label': 'real news', 'score': 0.95}, {'label': 'fake news', 'score': 0.05}]
                 best_match = data[0]
                 label = best_match['label']
                 score = best_match['score']
