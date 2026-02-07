@@ -26,7 +26,7 @@ def analyze_text(text):
     except Exception as e:
         return {"error": str(e)}
 
-# --- 4. USER INTERFACE ---
+
 st.title("🛡️ AI News Integrity Check")
 
 title = st.text_input("News Headline")
